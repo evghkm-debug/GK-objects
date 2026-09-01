@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.1.0';
+  const APP_VERSION = '0.2.0';
   const DB_NAME = 'objectsSurveyDB';
   const DB_VERSION = 1;
   const STORE = 'objects';
@@ -170,9 +170,7 @@
   }
 
   function objectProgress(obj) {
-    if (!obj.survey || !obj.survey.started) return 0;
-    if (obj.survey.completed) return 100;
-    return Math.min(99, Math.round(((obj.survey.stepIndex || 0) / (STEPS.length - 1)) * 100));
+    return surveyStats(obj).pct;
   }
 
   function firstPhoto(obj) {
@@ -181,9 +179,9 @@
     return keys.length ? photos[keys[0]] : null;
   }
 
-  function shell({title='Объекты', subtitle='MVP 0.1', content='', nav='objects', back=false, actions=''}) {
+  function shell({title='Объекты', subtitle='MVP 0.2', content='', nav='objects', back=false, actions='', showNav=true}) {
     $app.innerHTML = `
-      <div class="app-shell">
+      <div class="app-shell ${showNav ? '' : 'no-bottom-nav'}">
         <header class="topbar"><div class="topbar-row">
           ${back ? `<button class="icon-btn" data-go-back aria-label="Назад">←</button>` : `<div class="logo">О</div>`}
           <div class="brand">
@@ -192,11 +190,11 @@
           <div class="top-actions">${actions}</div>
         </div></header>
         <main>${content}</main>
-        <nav class="bottom-nav"><div class="bottom-nav-inner">
+        ${showNav ? `<nav class="bottom-nav"><div class="bottom-nav-inner">
           <button class="nav-btn ${nav==='objects'?'active':''}" data-route="#/objects"><span class="ico">▤</span><span>Объекты</span></button>
           <button class="nav-btn" data-route="#/new" aria-label="Добавить объект"><span class="nav-add">＋</span></button>
           <button class="nav-btn ${nav==='map'?'active':''}" data-route="#/map"><span class="ico">⌖</span><span>Карта</span></button>
-        </div></nav>
+        </div></nav>` : ''}
       </div>`;
     bindGlobal();
   }
@@ -210,20 +208,21 @@
     const objects = (await dbAll()).sort((a,b) => new Date(b.updatedAt || b.createdAt) - new Date(a.updatedAt || a.createdAt));
     const filtered = objects.filter(o => (o.address || '').toLowerCase().includes(searchText.toLowerCase()) || (o.phone || '').includes(searchText));
     const list = filtered.length ? filtered.map(o => {
-      const p = objectProgress(o);
+      const stats = surveyStats(o);
+      const p = stats.pct;
       const photo = firstPhoto(o);
       return `<div class="card object-row" data-open-object="${esc(o.id)}">
         <div class="thumb">${photo ? `<img src="${photo}" alt="">` : '⌂'}</div>
         <div>
           <div class="object-address">${esc(o.address || 'Без адреса')}</div>
           <div class="object-meta">${statusChip(o.status)} ${o.area ? `<span>${esc(o.area)} м²</span>`:''} <span>${fmtDate(o.createdAt)}</span></div>
-          ${o.survey?.started ? `<div class="progress-wrap"><div class="progress-label"><span>Обследование</span><span>${p}%</span></div><div class="progress"><div style="width:${p}%"></div></div></div>` : ''}
+          ${o.survey?.started ? `<div class="progress-wrap"><div class="progress-label"><span>${o.survey.completed ? 'Обследовано' : `Этап ${stats.step} из ${STEPS.length}`}</span><span>${p}% · ${stats.photos} фото</span></div><div class="progress"><div style="width:${p}%"></div></div></div>` : ''}
         </div><div class="chev">›</div>
       </div>`;
     }).join('') : `<div class="card empty-state"><div class="empty-icon">⌂</div><h3>${objects.length ? 'Ничего не найдено' : 'Объектов пока нет'}</h3><p>${objects.length ? 'Попробуйте изменить запрос.' : 'Добавьте первый объект, который увидели или нашли онлайн.'}</p><button class="btn btn-primary" data-route="#/new">＋ Новый объект</button></div>`;
 
     shell({
-      title:'Объекты', subtitle:`${objects.length} объектов · локальная версия`, nav:'objects',
+      title:'Объекты', subtitle:`${objects.length} объектов · MVP 0.2`, nav:'objects',
       actions:`<button class="icon-btn" id="exportBtn" title="Резервная копия">⇩</button>`,
       content:`
         <section class="hero"><h2>Фиксируй объект сразу</h2><p>Добавил адрес → приехал → прошёл чек-лист → сохранил одинаковый набор фото.</p><div class="hero-actions"><button class="btn btn-light" data-route="#/new">＋ Новый объект</button></div></section>
@@ -236,10 +235,10 @@
   }
 
   async function renderNew() {
-    shell({title:'Новый объект', subtitle:'Быстрое добавление', back:true, nav:'', content:`
+    shell({title:'Новый объект', subtitle:'Быстрое добавление', back:true, nav:'', showNav:false, content:`
       <form id="newForm" class="card form-card">
         <div class="field"><label>Адрес <span class="required-mark">*</span></label><input name="address" type="text" required placeholder="Санкт-Петербург, ул. ..."></div>
-        <div class="field"><label>Координаты</label><input name="coords" id="coords" type="text" placeholder="59.000000, 30.000000"><div class="inline-actions" style="margin-top:8px"><button type="button" class="btn btn-secondary btn-small" id="geoBtn">⌖ Взять моё местоположение</button></div></div>
+        <div class="field"><label>Местоположение</label><input name="coords" id="coords" type="hidden"><div class="location-box" id="locationBox"><div><strong>📍 Геопозиция не сохранена</strong><div class="help" id="coordsPreview">Можно добавить объект и без GPS.</div></div><button type="button" class="btn btn-secondary btn-small" id="geoBtn">Определить</button></div></div>
         <div class="field"><label>Источник</label><select name="source"><option value="">Не указано</option><option>Увидел на улице</option><option>Avito</option><option>ЦИАН</option><option>Яндекс / карты</option><option>Знакомые / собственник</option><option>Другое</option></select></div>
         <div class="field"><label>Ссылка на объявление</label><input name="link" type="url" placeholder="https://..."></div>
         <div class="field"><label>Площадь, м²</label><input name="area" type="number" inputmode="decimal" placeholder="Если известна"></div>
@@ -253,8 +252,11 @@
       const b = document.getElementById('geoBtn'); b.disabled = true; b.textContent = 'Определяю…';
       navigator.geolocation.getCurrentPosition(pos => {
         document.getElementById('coords').value = `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`;
-        b.disabled = false; b.textContent = '✓ Местоположение получено';
-      }, () => { b.disabled = false; b.textContent = '⌖ Взять моё местоположение'; toast('Не удалось получить геопозицию'); }, {enableHighAccuracy:true, timeout:12000});
+        b.disabled = false; b.textContent = 'Обновить';
+        document.getElementById('locationBox').classList.add('location-ok');
+        document.getElementById('locationBox').querySelector('strong').textContent = '✓ Местоположение сохранено';
+        document.getElementById('coordsPreview').textContent = `${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`;
+      }, () => { b.disabled = false; b.textContent = 'Определить'; toast('Не удалось получить геопозицию'); }, {enableHighAccuracy:true, timeout:12000});
     };
 
     document.getElementById('newForm').onsubmit = async e => {
@@ -275,7 +277,8 @@
   async function renderObject(objectId) {
     const o = await dbGet(objectId);
     if (!o) return notFound();
-    const progress = objectProgress(o);
+    const stats = surveyStats(o);
+    const progress = stats.pct;
     const photo = firstPhoto(o);
     const surveyBtn = o.survey?.completed ? 'Посмотреть обследование' : o.survey?.started ? 'Продолжить обследование' : 'Начать обследование';
     const surveyRoute = `#/survey/${o.id}/${o.survey?.completed ? 0 : (o.survey?.stepIndex || 0)}`;
@@ -284,17 +287,29 @@
       ['Источник', o.source || 'Не указан'], ['Координаты', o.coords || 'Не указаны'], ['Создан', fmtDate(o.createdAt)]
     ];
     const photosCount = Object.keys(o.survey?.photos || {}).length;
+    const missing = missingObjectInfo(o);
+    const mapUrl = mapsUrl(o.coords, o.address);
     shell({title:o.address || 'Объект', subtitle:'Карточка объекта', back:true, nav:'objects', actions:`<button class="icon-btn" id="editBtn" title="Редактировать">✎</button>`, content:`
       ${photo ? `<div class="card" style="overflow:hidden;margin-bottom:12px"><img src="${photo}" style="width:100%;height:230px;object-fit:cover" alt="Фото объекта"></div>`:''}
       <div class="card card-pad">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div class="small">ОБЪЕКТ</div><h2 style="margin:4px 0 7px;font-size:22px">${esc(o.address)}</h2></div>${statusChip(o.status)}</div>
         ${o.comment ? `<p style="margin:10px 0 0;line-height:1.45">${esc(o.comment)}</p>`:''}
-        ${o.survey?.started ? `<div class="progress-wrap" style="margin-top:14px"><div class="progress-label"><span>Обследование</span><span>${progress}% · ${photosCount} фото</span></div><div class="progress"><div style="width:${progress}%"></div></div></div>`:''}
+        ${o.survey?.started ? `<div class="progress-wrap" style="margin-top:14px"><div class="progress-label"><span>${o.survey.completed ? `${STEPS.length} из ${STEPS.length} этапов` : `Этап ${stats.step} из ${STEPS.length}`}</span><span>${progress}% · ${photosCount} фото</span></div><div class="progress"><div style="width:${progress}%"></div></div></div>`:''}
       </div>
       <div class="section-title">Основное</div>
       <div class="details-grid">${details.map(([k,v])=>`<div class="detail-box"><div class="detail-k">${esc(k)}</div><div class="detail-v">${esc(v)}</div></div>`).join('')}</div>
-      ${o.link ? `<div style="margin-top:12px"><a class="btn btn-secondary btn-block" target="_blank" rel="noopener" href="${esc(o.link)}">Открыть объявление ↗</a></div>`:''}
-      ${o.phone ? `<div style="margin-top:8px"><a class="btn btn-secondary btn-block" href="tel:${esc(o.phone)}">☎ Позвонить</a></div>`:''}
+      <div class="object-actions">
+        ${mapUrl ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="${esc(mapUrl)}">📍 На карте</a>`:''}
+        ${o.phone ? `<a class="btn btn-secondary" href="tel:${esc(o.phone)}">☎ Позвонить</a>`:''}
+        ${o.link ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="${esc(o.link)}">↗ Объявление</a>`:''}
+      </div>
+      ${missing.length ? `<div class="section-title">Что ещё уточнить</div><div class="card card-pad missing-card"><div class="missing-list">${missing.slice(0,6).map(x=>`<span>${esc(x)}</span>`).join('')}</div>${missing.length>6?`<div class="help">И ещё ${missing.length-6}</div>`:''}</div>` : `<div class="complete-note">✓ Основные данные заполнены</div>`}
+      <div class="section-title">Быстрый статус</div>
+      <div class="quick-status" id="quickStatus">
+        <button data-status="good" class="${o.status==='good'?'active good':''}">Перспективный</button>
+        <button data-status="review" class="${o.status==='review'?'active review':''}">Уточнить</button>
+        <button data-status="bad" class="${o.status==='bad'?'active bad':''}">Не подходит</button>
+      </div>
       <div style="margin-top:16px"><button class="btn btn-primary btn-block" id="surveyBtn">${surveyBtn} →</button></div>
       ${o.survey?.completed ? `<div style="margin-top:8px"><button class="btn btn-secondary btn-block" id="galleryBtn">Посмотреть все фото (${photosCount})</button></div>`:''}
       <div style="margin-top:22px"><button class="btn btn-danger btn-block" id="deleteBtn">Удалить объект</button></div>
@@ -302,6 +317,14 @@
     document.getElementById('surveyBtn').onclick = () => location.hash = surveyRoute;
     document.getElementById('editBtn').onclick = () => location.hash = `#/edit/${o.id}`;
     document.getElementById('galleryBtn')?.addEventListener('click', () => location.hash = `#/gallery/${o.id}`);
+    document.querySelectorAll('#quickStatus [data-status]').forEach(btn => btn.onclick = async () => {
+      o.status = btn.dataset.status;
+      if (o.survey?.completed) o.survey.finalStatus = btn.dataset.status;
+      o.updatedAt = new Date().toISOString();
+      await dbPut(o);
+      toast('Статус обновлён');
+      renderObject(o.id);
+    });
     document.getElementById('deleteBtn').onclick = async () => {
       if (!confirm('Удалить объект и все его фотографии?')) return;
       await dbDelete(o.id); toast('Объект удалён'); location.hash = '#/objects';
@@ -310,7 +333,7 @@
 
   async function renderEdit(objectId) {
     const o = await dbGet(objectId); if (!o) return notFound();
-    shell({title:'Редактировать', subtitle:o.address, back:true, nav:'', content:`
+    shell({title:'Редактировать', subtitle:o.address, back:true, nav:'', showNav:false, content:`
       <form id="editForm" class="card form-card">
         <div class="field"><label>Адрес</label><input name="address" required value="${esc(o.address)}"></div>
         <div class="field"><label>Координаты</label><input name="coords" value="${esc(o.coords||'')}"></div>
@@ -341,7 +364,7 @@
   function photoHtml(obj, [key,label,required,hint]) {
     const data = obj.survey.photos?.[key];
     return `<div class="photo-slot ${data?'done':''}">
-      ${data ? `<img src="${data}" alt="${esc(label)}"><div class="photo-actions"><button class="btn btn-secondary photo-replace" data-photo-key="${key}">Переснять</button><button class="btn btn-danger photo-delete" data-photo-key="${key}">Удалить</button></div>` : `<div class="photo-empty"><div style="font-size:28px">📷</div><strong>${esc(label)}${required?' <span class="required-mark">*</span>':''}</strong><span class="small">${esc(hint)}</span><button class="btn btn-secondary btn-small photo-capture" data-photo-key="${key}">Сделать фото</button></div>`}
+      ${data ? `<div class="photo-caption">${esc(label)}${required?' <span class="required-mark">*</span>':''}</div><img src="${data}" alt="${esc(label)}"><div class="photo-actions"><button class="btn btn-secondary photo-replace" data-photo-key="${key}">↻ Переснять</button><button class="btn btn-danger photo-delete" data-photo-key="${key}">Удалить</button></div>` : `<div class="photo-empty"><div style="font-size:28px">📷</div><strong>${esc(label)}${required?' <span class="required-mark">*</span>':''}</strong><span class="small">${esc(hint)}</span><button class="btn btn-secondary btn-small photo-capture" data-photo-key="${key}">Сделать фото</button></div>`}
       <input class="file-input" id="file-${key}" data-file-key="${key}" type="file" accept="image/*" capture="environment">
     </div>`;
   }
@@ -349,6 +372,53 @@
   function requiredPhotosComplete(obj, step) {
     const photos = obj.survey.photos || {};
     return (step.photos || []).filter(p => p[2]).every(p => !!photos[p[0]]);
+  }
+
+  function requiredPhotoStats(obj, step) {
+    const required = (step.photos || []).filter(p => p[2]);
+    const photos = obj.survey?.photos || {};
+    const done = required.filter(p => !!photos[p[0]]).length;
+    return {done, total: required.length, missing: Math.max(0, required.length - done)};
+  }
+
+  function surveyStats(obj) {
+    if (!obj.survey?.started) return {pct:0, step:0, photos:0, requiredDone:0, requiredTotal:0};
+    const photos = obj.survey.photos || {};
+    const photoSteps = STEPS.slice(0, STEPS.length - 1);
+    const required = photoSteps.flatMap(s => (s.photos || []).filter(p => p[2]));
+    const requiredDone = required.filter(p => !!photos[p[0]]).length;
+    const current = Math.max(0, Math.min(STEPS.length - 1, obj.survey.stepIndex || 0));
+    if (obj.survey.completed) return {pct:100, step:STEPS.length, photos:Object.keys(photos).length, requiredDone, requiredTotal:required.length};
+    const step = STEPS[current];
+    const stepPhoto = requiredPhotoStats(obj, step);
+    const within = stepPhoto.total ? stepPhoto.done / stepPhoto.total : 0;
+    const pct = Math.min(99, Math.round(((current + within) / (STEPS.length - 1)) * 100));
+    return {pct, step:current + 1, photos:Object.keys(photos).length, requiredDone, requiredTotal:required.length};
+  }
+
+  function missingObjectInfo(obj) {
+    const a = obj.survey?.answers || {};
+    const checks = [
+      ['Площадь', obj.area || a.area],
+      ['Телефон', obj.phone],
+      ['Геопозиция', obj.coords],
+      ['Мощность', a.power_kw],
+      ['Нагрузка на пол', a.floor_load],
+      ['Парковка', a.parking],
+      ['Подъезд грузового транспорта', a.truck_access],
+      ['Разгрузка', a.unloading],
+      ['Вода', a.water],
+      ['Канализация', a.sewer],
+      ['Отопление', a.heating],
+      ['Вентиляция', a.ventilation]
+    ];
+    return checks.filter(([,v]) => !v || v === 'Неизвестно').map(([label]) => label);
+  }
+
+  function mapsUrl(coords, label='Объект') {
+    const c = parseCoords(coords);
+    if (!c) return '';
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.lat + ',' + c.lng)}`;
   }
 
   async function renderSurvey(objectId, stepIndexRaw) {
@@ -362,8 +432,11 @@
     o.updatedAt = new Date().toISOString();
     await dbPut(o);
 
-    const pct = Math.round((stepIndex/(STEPS.length-1))*100);
-    let body = `<div class="check-stage-head"><div class="step-counter">ЭТАП ${stepIndex+1} ИЗ ${STEPS.length}</div><h2>${esc(step.title)}</h2><p>${esc(step.desc)}</p><div class="progress-wrap"><div class="progress-label"><span>${pct}%</span><span>${Object.keys(o.survey.photos||{}).length} фото</span></div><div class="progress"><div style="width:${pct}%"></div></div></div></div>`;
+    const stagePhotoStats = requiredPhotoStats(o, step);
+    const stats = surveyStats({...o, survey:{...o.survey, stepIndex}});
+    const pct = step.summary ? 100 : stats.pct;
+    const photoStatus = step.summary ? `${Object.keys(o.survey.photos||{}).length} фото` : (stagePhotoStats.total ? `${stagePhotoStats.done} из ${stagePhotoStats.total} обязательных фото` : `${Object.keys(o.survey.photos||{}).length} фото`);
+    let body = `<div class="check-stage-head"><div class="step-counter">ЭТАП ${stepIndex+1} ИЗ ${STEPS.length}</div><h2>${esc(step.title)}</h2><p>${esc(step.desc)}</p><div class="progress-wrap"><div class="progress-label"><span>${pct}%</span><span>${photoStatus}</span></div><div class="progress"><div style="width:${pct}%"></div></div></div></div>`;
 
     if (step.summary) {
       const a = o.survey.answers || {};
@@ -387,9 +460,12 @@
       </div>`;
     }
 
-    if (!step.summary) body += `<div class="stage-nav"><button class="btn btn-secondary" id="prevStep" ${stepIndex===0?'disabled':''}>← Назад</button><button class="btn btn-primary" id="nextStep">${stepIndex===STEPS.length-2?'К итогу':'Далее'} →</button></div>`;
+    if (!step.summary) {
+      const canNext = requiredPhotosComplete(o, step);
+      body += `${stagePhotoStats.missing ? `<div class="required-hint">Осталось обязательных фото: <strong>${stagePhotoStats.missing}</strong></div>` : ''}<div class="stage-nav"><button class="btn btn-secondary" id="prevStep" ${stepIndex===0?'disabled':''}>← Назад</button><button class="btn btn-primary" id="nextStep" ${canNext?'':'disabled'}>${stepIndex===STEPS.length-2?'К итогу':'Далее'} →</button></div>`;
+    }
 
-    shell({title:o.address, subtitle:`Обследование · ${step.title}`, back:true, nav:'', content:body});
+    shell({title:o.address, subtitle:`Обследование · ${step.title}`, back:true, nav:'', content:body, showNav:false});
 
     if (step.summary) {
       document.getElementById('finishSurvey').onclick = async () => {
@@ -445,21 +521,45 @@
     const photos = o.survey?.photos || {};
     const allDefs = STEPS.flatMap(s => s.photos || []);
     const byStep = STEPS.filter(s => (s.photos||[]).some(p => photos[p[0]])).map(s => `<div class="section-title">${esc(s.title)}</div><div class="photo-grid">${(s.photos||[]).filter(p=>photos[p[0]]).map(p=>`<div class="photo-slot done"><img src="${photos[p[0]]}" alt="${esc(p[1])}"><div style="padding:9px;font-size:12px;font-weight:700;background:#fff">${esc(p[1])}</div></div>`).join('')}</div>`).join('');
-    shell({title:'Фотографии',subtitle:o.address,back:true,nav:'',content: byStep || `<div class="card empty-state"><div class="empty-icon">📷</div><h3>Фото пока нет</h3></div>`});
+    shell({title:'Фотографии',subtitle:o.address,back:true,nav:'',showNav:false,content: byStep || `<div class="card empty-state"><div class="empty-icon">📷</div><h3>Фото пока нет</h3></div>`});
   }
 
   async function renderMap() {
     const objects = await dbAll();
     const withCoords = objects.filter(o => parseCoords(o.coords));
-    // MVP 0.1 deliberately avoids external map SDK. This screen confirms GPS data and opens native maps.
-    const rows = withCoords.map(o => {
-      const c = parseCoords(o.coords);
-      const url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.lat+','+c.lng)}`;
-      return `<div class="card card-pad" style="display:flex;gap:12px;align-items:center"><div style="font-size:26px">📍</div><div style="flex:1"><div class="object-address">${esc(o.address)}</div><div class="small">${esc(o.coords)}</div></div><a class="btn btn-secondary btn-small" href="${url}" target="_blank" rel="noopener">Открыть</a></div>`;
-    }).join('');
-    shell({title:'Карта',subtitle:'MVP 0.1 · GPS-точки',nav:'map',content:`
-      <div class="card card-pad"><h2 style="margin:0 0 7px">Карта будет в версии 0.2</h2><p style="margin:0;color:var(--muted);line-height:1.45">В первой версии мы не усложняем проект. Уже сейчас координаты сохраняются. Ниже можно открыть каждую точку в установленном картографическом сервисе.</p></div>
-      <div class="section-title">Объекты с координатами · ${withCoords.length}</div>${rows || `<div class="card empty-state"><div class="empty-icon">⌖</div><h3>Нет GPS-точек</h3><p>При добавлении объекта нажмите «Взять моё местоположение».</p></div>`}`});
+    shell({title:'Карта',subtitle:`${withCoords.length} объектов с GPS`,nav:'map',content:`
+      <div class="map-card"><div id="objectsMap" class="objects-map"></div><div id="mapFallback" class="map-fallback" hidden>Не удалось загрузить карту. Проверьте интернет.</div></div>
+      <div class="section-title">Объекты на карте · ${withCoords.length}</div>
+      <div class="map-object-list">${withCoords.map(o=>`<button class="card map-row" data-open-object="${esc(o.id)}"><span class="map-pin-dot status-${esc(o.status || 'new')}"></span><span><strong>${esc(o.address)}</strong><small>${esc(STATUS[o.status]?.[0] || 'Новый')}</small></span><span>›</span></button>`).join('') || `<div class="card empty-state"><div class="empty-icon">⌖</div><h3>Нет GPS-точек</h3><p>При добавлении объекта нажмите «Определить» в блоке местоположения.</p></div>`}</div>`});
+
+    document.querySelectorAll('[data-open-object]').forEach(el => el.onclick = () => location.hash = `#/object/${el.dataset.openObject}`);
+    const mapEl = document.getElementById('objectsMap');
+    if (!mapEl) return;
+    if (!window.L) {
+      mapEl.hidden = true;
+      document.getElementById('mapFallback').hidden = false;
+      return;
+    }
+    const map = L.map(mapEl, {zoomControl:true}).setView([59.9386, 30.3141], 10);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+    const bounds = [];
+    const colorMap = {new:'#2563eb',survey:'#f59e0b',surveyed:'#16a34a',good:'#16a34a',review:'#eab308',bad:'#6b7280'};
+    withCoords.forEach(o => {
+      const c = parseCoords(o.coords); if (!c) return;
+      bounds.push([c.lat,c.lng]);
+      const icon = L.divIcon({className:'object-map-marker-wrap',html:`<span class="object-map-marker" style="--pin:${colorMap[o.status]||'#2563eb'}"></span>`,iconSize:[26,26],iconAnchor:[13,26]});
+      L.marker([c.lat,c.lng],{icon}).addTo(map).bindPopup(`<div class="map-popup"><strong>${esc(o.address)}</strong><div>${esc(STATUS[o.status]?.[0] || 'Новый')}</div><a href="#/object/${esc(o.id)}">Открыть объект</a></div>`);
+    });
+    if (bounds.length === 1) map.setView(bounds[0], 15);
+    else if (bounds.length > 1) map.fitBounds(bounds, {padding:[28,28], maxZoom:15});
+    if (navigator.geolocation) navigator.geolocation.getCurrentPosition(pos => {
+      const here = L.divIcon({className:'my-map-marker-wrap',html:'<span class="my-map-marker"></span>',iconSize:[22,22],iconAnchor:[11,11]});
+      L.marker([pos.coords.latitude,pos.coords.longitude],{icon:here,zIndexOffset:1000}).addTo(map).bindPopup('Вы здесь');
+    },()=>{}, {enableHighAccuracy:false,timeout:5000,maximumAge:120000});
+    setTimeout(()=>map.invalidateSize(), 100);
   }
 
   function parseCoords(s) {

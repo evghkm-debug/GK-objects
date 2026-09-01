@@ -159,3 +159,57 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
   .photo-grid { grid-template-columns: repeat(3, 1fr); }
   .details-grid { grid-template-columns: repeat(3, 1fr); }
 }
+
+/* MVP 0.2 */
+.no-bottom-nav { padding-bottom: 20px; }
+.no-bottom-nav .stage-nav { bottom: calc(8px + env(safe-area-inset-bottom)); }
+
+.location-box {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  border: 1px solid #d9dde3; border-radius: 14px; background: #f8f9fb; padding: 12px;
+}
+.location-box strong { font-size: 14px; }
+.location-box .help { margin-top: 3px; }
+.location-box.location-ok { border-color: #bbf7d0; background: #f0fdf4; }
+
+.object-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin-top: 12px; }
+.object-actions .btn { min-width: 0; padding-left: 10px; padding-right: 10px; }
+.missing-card { box-shadow: none; }
+.missing-list { display: flex; flex-wrap: wrap; gap: 7px; }
+.missing-list span { background: #fff7ed; color: #9a3412; border: 1px solid #fed7aa; border-radius: 999px; padding: 7px 10px; font-size: 12px; font-weight: 750; }
+.complete-note { margin-top: 14px; background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; padding: 12px 14px; border-radius: 14px; font-weight: 750; }
+
+.quick-status { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 7px; }
+.quick-status button { min-height: 44px; border: 1px solid #d9dde3; background: #fff; border-radius: 12px; padding: 6px 7px; font-size: 12px; font-weight: 750; color: #4b5563; }
+.quick-status button.active.good { background: #dcfce7; border-color: #86efac; color: #166534; }
+.quick-status button.active.review { background: #fef3c7; border-color: #fde68a; color: #92400e; }
+.quick-status button.active.bad { background: #fee2e2; border-color: #fecaca; color: #991b1b; }
+
+.photo-caption { padding: 9px 9px 7px; background: #fff; font-size: 12px; font-weight: 800; border-bottom: 1px solid var(--line); }
+.photo-actions .btn { font-size: 11px; }
+.required-hint { margin: 12px 4px 0; padding: 10px 12px; border-radius: 12px; background: #fff7ed; color: #9a3412; font-size: 13px; text-align: center; }
+
+.map-card { background: #fff; border: 1px solid var(--line); border-radius: 20px; overflow: hidden; box-shadow: var(--shadow); }
+.objects-map { width: 100%; height: min(56vh, 480px); min-height: 350px; background: #e5e7eb; }
+.map-fallback { min-height: 240px; display: grid; place-items: center; text-align: center; padding: 24px; color: var(--muted); }
+.map-object-list { display: grid; gap: 8px; }
+.map-row { width: 100%; border: 1px solid var(--line); padding: 12px 14px; display: grid; grid-template-columns: 18px 1fr auto; align-items: center; gap: 10px; text-align: left; background: #fff; }
+.map-row strong { display: block; font-size: 14px; color: var(--text); }
+.map-row small { display: block; color: var(--muted); margin-top: 3px; }
+.map-pin-dot { width: 12px; height: 12px; border-radius: 50%; background: #2563eb; box-shadow: 0 0 0 4px rgba(37,99,235,.1); }
+.map-pin-dot.status-good, .map-pin-dot.status-surveyed { background: #16a34a; }
+.map-pin-dot.status-review, .map-pin-dot.status-survey { background: #eab308; }
+.map-pin-dot.status-bad { background: #6b7280; }
+.object-map-marker-wrap, .my-map-marker-wrap { background: transparent; border: 0; }
+.object-map-marker { width: 24px; height: 24px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--pin); border: 3px solid #fff; box-shadow: 0 3px 10px rgba(0,0,0,.28); display: block; }
+.object-map-marker::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: #fff; position: absolute; left: 6px; top: 6px; }
+.my-map-marker { width: 18px; height: 18px; border-radius: 50%; background: #2563eb; border: 3px solid #fff; box-shadow: 0 0 0 5px rgba(37,99,235,.22); display: block; }
+.map-popup { min-width: 160px; line-height: 1.35; }
+.map-popup strong { display: block; margin-bottom: 3px; }
+.map-popup a { display: inline-block; margin-top: 7px; color: #b91c1c; font-weight: 800; text-decoration: none; }
+
+@media (max-width: 430px) {
+  .object-actions { grid-template-columns: 1fr 1fr; }
+  .quick-status { gap: 5px; }
+  .quick-status button { font-size: 11px; }
+}
