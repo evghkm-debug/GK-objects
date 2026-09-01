@@ -299,7 +299,7 @@
       <div class="section-title">Основное</div>
       <div class="details-grid">${details.map(([k,v])=>`<div class="detail-box"><div class="detail-k">${esc(k)}</div><div class="detail-v">${esc(v)}</div></div>`).join('')}</div>
       <div class="object-actions">
-        ${mapUrl ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="${esc(mapUrl)}">📍 На карте</a>`:''}
+        ${mapUrl ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="${esc(mapUrl)}">📍 Яндекс Карты</a>`:''}
         ${o.phone ? `<a class="btn btn-secondary" href="tel:${esc(o.phone)}">☎ Позвонить</a>`:''}
         ${o.link ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="${esc(o.link)}">↗ Объявление</a>`:''}
       </div>
@@ -418,7 +418,7 @@
   function mapsUrl(coords, label='Объект') {
     const c = parseCoords(coords);
     if (!c) return '';
-    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(c.lat + ',' + c.lng)}`;
+    return `https://yandex.ru/maps/?pt=${encodeURIComponent(c.lng + ',' + c.lat)}&z=17&l=map`;
   }
 
   async function renderSurvey(objectId, stepIndexRaw) {
@@ -551,7 +551,7 @@
       const c = parseCoords(o.coords); if (!c) return;
       bounds.push([c.lat,c.lng]);
       const icon = L.divIcon({className:'object-map-marker-wrap',html:`<span class="object-map-marker" style="--pin:${colorMap[o.status]||'#2563eb'}"></span>`,iconSize:[26,26],iconAnchor:[13,26]});
-      L.marker([c.lat,c.lng],{icon}).addTo(map).bindPopup(`<div class="map-popup"><strong>${esc(o.address)}</strong><div>${esc(STATUS[o.status]?.[0] || 'Новый')}</div><a href="#/object/${esc(o.id)}">Открыть объект</a></div>`);
+      L.marker([c.lat,c.lng],{icon}).addTo(map).bindPopup(`<div class="map-popup"><strong>${esc(o.address)}</strong><div>${esc(STATUS[o.status]?.[0] || 'Новый')}</div><a href="#/object/${esc(o.id)}">Открыть объект</a><br><a target="_blank" rel="noopener" href="${esc(mapsUrl(o.coords, o.address))}">Яндекс Карты ↗</a></div>`);
     });
     if (bounds.length === 1) map.setView(bounds[0], 15);
     else if (bounds.length > 1) map.fitBounds(bounds, {padding:[28,28], maxZoom:15});
