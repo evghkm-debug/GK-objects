@@ -213,3 +213,56 @@ hr.sep { border: 0; border-top: 1px solid var(--line); margin: 16px 0; }
   .quick-status { gap: 5px; }
   .quick-status button { font-size: 11px; }
 }
+
+/* MVP 0.3 — два режима, контакты и несколько помещений */
+.form-section-title { margin-top: 22px; }
+.section-help { margin: -4px 2px 10px; }
+.add-repeat { margin: 4px 0 14px; }
+.repeat-row { border: 1px solid var(--line); border-radius: 15px; padding: 12px; background: #fafbfc; margin-bottom: 9px; }
+.repeat-row .field { margin-bottom: 10px; }
+.repeat-row-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 9px; }
+.repeat-remove { border: 0; background: transparent; color: #991b1b; font-size: 12px; font-weight: 800; padding: 4px 0 0; }
+
+.mode-note { border-radius: 15px; padding: 12px 13px; margin-bottom: 14px; display: flex; flex-direction: column; gap: 4px; }
+.mode-note strong { font-size: 14px; }
+.mode-note span { font-size: 12px; line-height: 1.4; }
+.field-mode { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e3a8a; }
+.visit-mode { background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; }
+
+.workflow-card { background: #fff; border: 1px solid var(--line); border-radius: 17px; padding: 14px; display: grid; grid-template-columns: 34px 1fr; gap: 10px; box-shadow: var(--shadow); }
+.workflow-card .btn { grid-column: 1 / -1; width: 100%; }
+.workflow-number { width: 32px; height: 32px; border-radius: 11px; display: grid; place-items: center; font-weight: 900; background: #eef0f3; color: #4b5563; }
+.workflow-body { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.workflow-body strong { font-size: 16px; }
+.workflow-body span { color: #4b5563; font-size: 13px; line-height: 1.35; }
+.workflow-body small { color: var(--muted); font-size: 11px; line-height: 1.35; }
+.field-workflow { border-color: #bfdbfe; }
+.field-workflow .workflow-number { background: #dbeafe; color: #1d4ed8; }
+.visit-workflow { border-color: #fecaca; }
+.visit-workflow .workflow-number { background: #fee2e2; color: #991b1b; }
+.workflow-connector { width: 2px; height: 18px; background: #d1d5db; margin-left: 30px; }
+
+.compact-list { padding-top: 6px; padding-bottom: 6px; }
+.compact-row { min-height: 54px; display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #eef0f3; }
+.compact-row:last-child { border-bottom: 0; }
+.compact-row > div { min-width: 0; }
+.compact-row strong { display: block; font-size: 14px; }
+.compact-row span { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; }
+.compact-total { padding: 10px 0 4px; color: #4b5563; font-size: 13px; }
+.contact-phone { flex: 0 0 auto; color: #991b1b; background: #fff1f2; text-decoration: none; border-radius: 12px; padding: 9px 10px; font-size: 13px; font-weight: 800; }
+
+.phase-badge { display: inline-flex; align-items: center; min-height: 28px; padding: 0 10px; border-radius: 999px; font-size: 11px; font-weight: 900; margin-bottom: 7px; letter-spacing: .04em; }
+.phase-field { background: #dbeafe; color: #1e40af; }
+.phase-visit { background: #fee2e2; color: #991b1b; }
+.control-mark { display: inline-flex; margin-left: 4px; padding: 2px 5px; border-radius: 999px; background: #fff7ed; color: #9a3412; font-size: 9px; font-weight: 800; vertical-align: middle; }
+.btn-save { background: #e5e7eb; color: #111827; }
+.stage-nav-3 { grid-template-columns: .72fr .9fr 1.05fr; }
+.summary-actions { display: grid; grid-template-columns: 1fr 1.2fr; gap: 8px; }
+
+@media (max-width: 430px) {
+  .repeat-row-grid { grid-template-columns: 1fr; gap: 0; }
+  .stage-nav-3 { grid-template-columns: .65fr .9fr 1.05fr; padding-left: 6px; padding-right: 6px; }
+  .stage-nav-3 .btn { padding-left: 8px; padding-right: 8px; font-size: 12px; }
+  .summary-actions { grid-template-columns: 1fr; }
+  .contact-row { align-items: flex-start; }
+}
