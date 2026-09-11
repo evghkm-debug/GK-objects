@@ -1,0 +1,43 @@
+import {PGlite} from '@electric-sql/pglite';
+import {readFile} from 'node:fs/promises';
+import assert from 'node:assert/strict';
+const db=new PGlite();
+await db.exec(`create role anon;create role authenticated;create schema auth;create schema storage;
+create table auth.users(id uuid primary key);
+create function auth.uid() returns uuid language sql stable as $$select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid$$;
+create table storage.buckets(id text primary key,name text,public boolean,file_size_limit bigint,allowed_mime_types text[]);
+create table storage.objects(id bigint generated always as identity primary key,bucket_id text,name text,unique(bucket_id,name));
+alter table storage.objects enable row level security;
+grant usage on schema public,auth,storage to authenticated,anon;
+grant select,insert,update,delete on storage.objects to authenticated;grant usage on all sequences in schema storage to authenticated;
+create function storage.foldername(text) returns text[] language sql immutable as $$select string_to_array($1,'/')$$;`);
+await db.exec(await readFile(new URL('../supabase/migrations/202609100001_gk_sync.sql',import.meta.url),'utf8'));
+const workspace='11111111-1111-4111-8111-111111111111',other='22222222-2222-4222-8222-222222222222',a='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',b='bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+await db.exec(`insert into auth.users values('${a}'),('${b}');insert into public.gk_workspaces(id,name) values('${workspace}','Team'),('${other}','Other');insert into public.gk_members values('${workspace}','${a}','Tester'),('${other}','${b}','Other tester');`);
+async function role(name,user=''){await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[user]);await db.exec('set role '+name);}
+async function denied(fn){await assert.rejects(fn);}
+await role('anon');await denied(()=>db.query('select * from public.gk_objects'));
+await role('authenticated',a);
+await denied(()=>db.query(`insert into public.gk_members values('${other}','${a}','Intruder')`));
+await denied(()=>db.query(`update public.gk_objects set revision=999`));
+async function save(id,payload,base,op){const {rows}=await db.query('select public.gk_save_object($1,$2,$3,$4,$5) result',[workspace,id,JSON.stringify(payload),base,op]);return rows[0].result;}
+const p={id:'object-1',address:'Test',survey:{photos:{},answers:{}}};
+const op1='11111111-0000-4000-8000-000000000001',op2='11111111-0000-4000-8000-000000000002';
+const first=await save(p.id,p,0,op1);assert(first.ok);assert.equal(first.row.revision,1);
+assert.equal((await save(p.id,p,0,op1)).row.revision,1);
+const changed={...p,address:'Changed'};
+assert.equal((await save(p.id,changed,0,op2)).conflict,true);
+assert.equal((await save(p.id,changed,1,op2)).row.revision,2);
+assert.equal((await db.query('select * from public.gk_history')).rows.length,2);
+await denied(()=>db.query(`delete from public.gk_history`));
+await denied(()=>db.query(`insert into storage.objects(bucket_id,name) values('gk-photos','${other}/photos/${'a'.repeat(64)}.jpg')`));
+await db.query(`insert into storage.objects(bucket_id,name) values('gk-photos',$1)`,[workspace+'/photos/'+'a'.repeat(64)+'.jpg']);
+const photoObject={...p,id:'photo-object',survey:{photos:{front:'gk-photo:'+'a'.repeat(64)}}};
+assert((await save(photoObject.id,photoObject,0,op1)).ok);
+await denied(()=>save('missing-photo',{...photoObject,id:'missing-photo',survey:{photos:{front:'gk-photo:'+'b'.repeat(64)}}},0,op2));
+await role('authenticated',b);
+assert.equal((await db.query('select * from public.gk_objects')).rows.length,0);
+assert.equal((await db.query('select * from storage.objects')).rows.length,0);
+await denied(()=>save(p.id,p,2,op1));
+console.log('PASS SQL: anonymous denial, team isolation, no self-enrollment, no direct writes, idempotence, optimistic conflict, revision history, private immutable photos, missing-photo rejection.');
+await db.close();

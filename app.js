@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.3.0';
+  const APP_VERSION = '0.4.1';
   const DB_NAME = 'objectsSurveyDB';
   const DB_VERSION = 1;
   const STORE = 'objects';
@@ -97,62 +97,15 @@
     }
   ];
 
-  let dbPromise = null;
   let searchText = '';
-
-  function openDb() {
-    if (dbPromise) return dbPromise;
-    dbPromise = new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VERSION);
-      req.onupgradeneeded = () => {
-        const db = req.result;
-        if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'id' });
-      };
-      req.onsuccess = () => resolve(req.result);
-      req.onerror = () => reject(req.error);
-    });
-    return dbPromise;
-  }
-
-  async function dbAll() {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => resolve((req.result || []).map(normalizeObject));
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async function dbGet(id) {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).get(id);
-      req.onsuccess = () => resolve(normalizeObject(req.result || null));
-      req.onerror = () => reject(req.error);
-    });
-  }
-
-  async function dbPut(obj) {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).put(obj);
-      tx.oncomplete = () => resolve(obj);
-      tx.onerror = () => reject(tx.error);
-    });
-  }
-
-  async function dbDelete(id) {
-    const db = await openDb();
-    return new Promise((resolve, reject) => {
-      const tx = db.transaction(STORE, 'readwrite');
-      tx.objectStore(STORE).delete(id);
-      tx.oncomplete = resolve;
-      tx.onerror = () => reject(tx.error);
-    });
-  }
+  let viewSave = null;
+  async function closeView() { const pending=viewSave; viewSave=null; if(pending)await pending.close(); }
+  const openDb = () => GKStore.open();
+  const dbAll = async () => (await GKStore.all()).filter(GKSync.isVisible).map(normalizeObject);
+  const dbGet = async key => { const o=await GKStore.get(key); return o && GKSync.isVisible(o) ? normalizeObject(o) : null; };
+  const dbPut = object => GKStore.save(object);
+  const dbDelete = key => GKStore.archive(key);
+  const safeLink = value => { try { const u=new URL(value);return ['https:','http:'].includes(u.protocol)?u.href:''; } catch {return '';} };
 
   const esc = (v='') => String(v).replace(/[&<>'"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));
   const fmtDate = s => s ? new Date(s).toLocaleDateString('ru-RU') : '—';
@@ -199,9 +152,9 @@
   }
 
   function premiseRowHtml(p={}) {
-    return `<div class="repeat-row" data-premise-row>
+    return `<div class="repeat-row" data-premise-row data-id="${esc(p.id||id())}">
       <div class="repeat-row-grid">
-        <div class="field"><label>Площадь, м²</label><input data-premise-area type="number" inputmode="decimal" value="${esc(p.area||'')}" placeholder="Например, 180"></div>
+        <div class="field"><label>Площадь, м²</label><input data-premise-area type="number" step="any" inputmode="decimal" value="${esc(p.area||'')}" placeholder="Например, 180"></div>
         <div class="field"><label>Пометка</label><input data-premise-label type="text" value="${esc(p.label||'')}" placeholder="1 этаж / цоколь / помещение 2"></div>
       </div>
       <button type="button" class="repeat-remove" data-remove-row>Удалить</button>
@@ -209,7 +162,7 @@
   }
 
   function contactRowHtml(c={}) {
-    return `<div class="repeat-row" data-contact-row>
+    return `<div class="repeat-row" data-contact-row data-id="${esc(c.id||id())}">
       <div class="field"><label>Имя контакта</label><input data-contact-name type="text" value="${esc(c.name||'')}" placeholder="Например, Александр"></div>
       <div class="repeat-row-grid">
         <div class="field"><label>Телефон</label><input data-contact-phone type="tel" value="${esc(c.phone||'')}" placeholder="+7 ..."></div>
@@ -225,13 +178,13 @@
 
   function collectPremises(scope) {
     return [...scope.querySelectorAll('[data-premise-row]')].map(row => ({
-      id:id(), area:(row.querySelector('[data-premise-area]')?.value||'').trim(), label:(row.querySelector('[data-premise-label]')?.value||'').trim()
+      id:row.dataset.id || id(), area:(row.querySelector('[data-premise-area]')?.value||'').trim(), label:(row.querySelector('[data-premise-label]')?.value||'').trim()
     })).filter(x => x.area || x.label);
   }
 
   function collectContacts(scope) {
     return [...scope.querySelectorAll('[data-contact-row]')].map(row => ({
-      id:id(), name:(row.querySelector('[data-contact-name]')?.value||'').trim(), phone:(row.querySelector('[data-contact-phone]')?.value||'').trim(), label:(row.querySelector('[data-contact-label]')?.value||'').trim()
+      id:row.dataset.id || id(), name:(row.querySelector('[data-contact-name]')?.value||'').trim(), phone:(row.querySelector('[data-contact-phone]')?.value||'').trim(), label:(row.querySelector('[data-contact-label]')?.value||'').trim()
     })).filter(x => x.name || x.phone || x.label);
   }
 
@@ -291,21 +244,21 @@
       const p = stats.pct;
       const photo = firstPhoto(o);
       return `<div class="card object-row" data-open-object="${esc(o.id)}">
-        <div class="thumb">${photo ? `<img src="${photo}" alt="">` : '⌂'}</div>
+        <div class="thumb">${photo ? `<img src="${esc(photo)}" alt="">` : '⌂'}</div>
         <div>
           <div class="object-address">${esc(o.address || 'Без адреса')}</div>
-          <div class="object-meta">${statusChip(o.status)} ${(o.premises||[]).length ? `<span>${esc(premiseSummary(o,''))}</span>`:''} <span>${fmtDate(o.createdAt)}</span></div>
+          <div class="object-meta">${statusChip(o.status)} ${o.archivedAt ? '<span class="chip">Архив</span>' : ''} ${o.reviewRequired ? '<span class="chip">Проверить две версии</span>' : ''} ${(o.premises||[]).length ? `<span>${esc(premiseSummary(o,''))}</span>`:''} <span>${fmtDate(o.createdAt)}</span></div>
           ${o.survey?.started ? `<div class="progress-wrap"><div class="progress-label"><span>${o.survey.completed ? 'Обследовано' : `Этап ${stats.step} из ${STEPS.length}`}</span><span>${p}% · ${stats.photos} фото</span></div><div class="progress"><div style="width:${p}%"></div></div></div>` : ''}
         </div><div class="chev">›</div>
       </div>`;
     }).join('') : `<div class="card empty-state"><div class="empty-icon">⌂</div><h3>${objects.length ? 'Ничего не найдено' : 'Объектов пока нет'}</h3><p>${objects.length ? 'Попробуйте изменить запрос.' : 'Добавьте первый объект, который увидели или нашли онлайн.'}</p><button class="btn btn-primary" data-route="#/new">＋ Новый объект</button></div>`;
 
     shell({
-      title:'Объекты', subtitle:`${objects.length} объектов · MVP 0.3`, nav:'objects',
-      actions:`<button class="icon-btn" id="exportBtn" title="Резервная копия">⇩</button>`,
+      title:'Объекты', subtitle:`${objects.length} объектов · v${APP_VERSION}`, nav:'objects',
+      actions:`<button class="icon-btn" data-route="#/cloud" title="Общая база и резервные копии">☁</button><button class="icon-btn" id="exportBtn" title="Резервная копия">⇩</button>`,
       content:`
         <section class="hero"><h2>Фиксируй объект сразу</h2><p>Добавил адрес → приехал → прошёл чек-лист → сохранил одинаковый набор фото.</p><div class="hero-actions"><button class="btn btn-light" data-route="#/new">＋ Новый объект</button></div></section>
-        <div class="search"><input id="searchInput" value="${esc(searchText)}" placeholder="Поиск по адресу или телефону"></div>
+        <button class="sync-status btn btn-secondary btn-block" id="syncStatus" data-route="#/cloud">${esc(syncLabel())}</button><div class="search"><input id="searchInput" value="${esc(searchText)}" placeholder="Поиск по адресу или телефону"></div>
         <div class="object-list">${list}</div>`
     });
     document.getElementById('searchInput').oninput = e => { searchText = e.target.value; renderObjects(); };
@@ -317,7 +270,7 @@
     shell({title:'Новый объект', subtitle:'Быстрая фиксация в базу', back:true, nav:'', showNav:false, content:`
       <form id="newForm" class="card form-card">
         <div class="mode-note field-mode"><strong>1. Сначала просто фиксируем объект</strong><span>Адрес, GPS, источник, помещения и контакты. Остальное можно добавить позже.</span></div>
-        <div class="field"><label>Адрес <span class="required-mark">*</span></label><input name="address" type="text" required placeholder="Санкт-Петербург, ул. ..."></div>
+        <div class="field"><label>Адрес</label><input name="address" type="text" placeholder="Санкт-Петербург, ул. ..."></div>
         <div class="field"><label>Местоположение</label><input name="coords" id="coords" type="hidden"><div class="location-box" id="locationBox"><div><strong>📍 Геопозиция не сохранена</strong><div class="help" id="coordsPreview">Можно добавить объект и без GPS.</div></div><button type="button" class="btn btn-secondary btn-small" id="geoBtn">Определить</button></div></div>
         <div class="field"><label>Источник</label><select name="source">${sourceOptions('')}</select></div>
         <div class="field"><label>Ссылка на объявление</label><input name="link" type="url" placeholder="https://..."></div>
@@ -398,13 +351,15 @@
     ];
 
     shell({title:o.address || 'Объект', subtitle:'Карточка объекта', back:true, nav:'objects', actions:`<button class="icon-btn" id="editBtn" title="Редактировать">✎</button>`, content:`
-      ${photo ? `<div class="card" style="overflow:hidden;margin-bottom:12px"><img src="${photo}" style="width:100%;height:230px;object-fit:cover" alt="Фото объекта"></div>`:''}
+      ${photo ? `<div class="card" style="overflow:hidden;margin-bottom:12px"><img src="${esc(photo)}" style="width:100%;height:230px;object-fit:cover" alt="Фото объекта"></div>`:''}
       <div class="card card-pad">
         <div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start"><div><div class="small">ОБЪЕКТ</div><h2 style="margin:4px 0 7px;font-size:22px">${esc(o.address)}</h2></div>${statusChip(o.status)}</div>
         ${o.comment ? `<p style="margin:10px 0 0;line-height:1.45">${esc(o.comment)}</p>`:''}
         ${o.survey?.started ? `<div class="progress-wrap" style="margin-top:14px"><div class="progress-label"><span>${o.survey.completed ? 'Полный осмотр завершён' : `Сохранено · этап ${stats.step} из ${STEPS.length}`}</span><span>${photosCount} фото</span></div><div class="progress"><div style="width:${stats.pct}%"></div></div></div>`:''}
       </div>
 
+      ${o.reviewRequired ? '<div class="required-hint">Другой телефон тоже изменил этот объект. Обе версии сохранены; эта — отдельная копия для сверки.</div>' : ''}
+      ${o._sync?.serverUpdatedAt ? `<div class="help">Последнее изменение в общей базе: ${esc(GKSync.author(o._sync.updatedBy))} · ${esc(new Date(o._sync.serverUpdatedAt).toLocaleString('ru-RU'))}</div>` : ''}
       <div class="section-title">Основное</div>
       <div class="details-grid">${details.map(([k,v])=>`<div class="detail-box"><div class="detail-k">${esc(k)}</div><div class="detail-v">${esc(v)}</div></div>`).join('')}</div>
 
@@ -415,7 +370,7 @@
 
       <div class="object-actions">
         ${mapUrl ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="${esc(mapUrl)}">📍 Яндекс Карты</a>`:''}
-        ${o.link ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="${esc(o.link)}">↗ Объявление</a>`:''}
+        ${safeLink(o.link) ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="${esc(safeLink(o.link))}">↗ Объявление</a>`:''}
       </div>
 
       <div class="section-title">Рабочий процесс</div>
@@ -437,14 +392,15 @@
         <button data-status="review" class="${o.status==='review'?'active review':''}">Уточнить</button>
         <button data-status="bad" class="${o.status==='bad'?'active bad':''}">Не подходит</button>
       </div>
-      ${photosCount ? `<div style="margin-top:12px"><button class="btn btn-secondary btn-block" id="galleryBtn">Посмотреть все фото (${photosCount})</button></div>`:''}
-      <div style="margin-top:22px"><button class="btn btn-danger btn-block" id="deleteBtn">Удалить объект</button></div>
+      ${photosCount ? `<div style="margin-top:12px"><button class="btn btn-primary btn-block" id="downloadObjectPhotos">↓ Скачать все фото (${photosCount}) одним ZIP</button><button class="btn btn-secondary btn-block" style="margin-top:8px" id="galleryBtn">Посмотреть все фото (${photosCount})</button></div>`:''}
+      <div style="margin-top:22px"><button class="btn btn-secondary btn-block" id="deleteBtn">${o.archivedAt ? 'Вернуть из архива' : 'В архив'}</button></div>
     `});
 
     document.getElementById('fieldModeBtn').onclick = () => location.hash = fieldRoute;
     document.getElementById('visitModeBtn').onclick = () => location.hash = visitRoute;
     document.getElementById('editBtn').onclick = () => location.hash = `#/edit/${o.id}`;
     document.getElementById('galleryBtn')?.addEventListener('click', () => location.hash = `#/gallery/${o.id}`);
+    bindPhotoArchive(document.getElementById('downloadObjectPhotos'),o);
     document.querySelectorAll('#quickStatus [data-status]').forEach(btn => btn.onclick = async () => {
       o.status = btn.dataset.status;
       if (o.survey?.completed) o.survey.finalStatus = btn.dataset.status;
@@ -454,8 +410,7 @@
       renderObject(o.id);
     });
     document.getElementById('deleteBtn').onclick = async () => {
-      if (!confirm('Удалить объект и все его фотографии?')) return;
-      await dbDelete(o.id); toast('Объект удалён'); location.hash = '#/objects';
+      await GKStore.archive(o.id,!o.archivedAt); toast(o.archivedAt ? 'Объект возвращён' : 'Объект в архиве'); location.hash = '#/objects';
     };
   }
 
@@ -463,7 +418,7 @@
     const o = await dbGet(objectId); if (!o) return notFound();
     shell({title:'Редактировать', subtitle:o.address, back:true, nav:'', showNav:false, content:`
       <form id="editForm" class="card form-card">
-        <div class="field"><label>Адрес</label><input name="address" required value="${esc(o.address)}"></div>
+        <div class="field"><label>Адрес</label><input name="address" value="${esc(o.address)}"></div>
         <div class="field"><label>Координаты</label><input name="coords" value="${esc(o.coords||'')}"></div>
         <div class="field"><label>Источник</label><select name="source">${sourceOptions(o.source||'')}</select></div>
         <div class="field"><label>Ссылка</label><input name="link" type="url" value="${esc(o.link||'')}"></div>
@@ -510,7 +465,7 @@
     const data = obj.survey.photos?.[key];
     const mark = required ? ' <span class="control-mark">контрольное</span>' : '';
     return `<div class="photo-slot ${data?'done':''}">
-      ${data ? `<div class="photo-caption">${esc(label)}${mark}</div><img src="${data}" alt="${esc(label)}"><div class="photo-actions"><button class="btn btn-secondary photo-replace" data-photo-key="${key}">↻ Переснять</button><button class="btn btn-danger photo-delete" data-photo-key="${key}">Удалить</button></div>` : `<div class="photo-empty"><div style="font-size:28px">📷</div><strong>${esc(label)}${mark}</strong><span class="small">${esc(hint)}</span><button class="btn btn-secondary btn-small photo-capture" data-photo-key="${key}">Сделать фото</button></div>`}
+      ${data ? `<div class="photo-caption">${esc(label)}${mark}</div><img src="${esc(data)}" alt="${esc(label)}"><div class="photo-actions"><button class="btn btn-secondary photo-replace" data-photo-key="${key}">↻ Переснять</button><button class="btn btn-danger photo-delete" data-photo-key="${key}">Удалить</button>${photoActions(key,label)}</div>` : `<div class="photo-empty"><div style="font-size:28px">📷</div><strong>${esc(label)}${mark}</strong><span class="small">${esc(hint)}</span><button class="btn btn-secondary btn-small photo-capture" data-photo-key="${key}">Сделать фото</button></div>`}
       <input class="file-input" id="file-${key}" data-file-key="${key}" type="file" accept="image/*" capture="environment">
     </div>`;
   }
@@ -583,6 +538,7 @@
   }
 
   async function renderSurvey(objectId, stepIndexRaw) {
+    await closeView();
     const o = await dbGet(objectId); if (!o) return notFound();
     const stepIndex = Math.max(0, Math.min(STEPS.length-1, Number(stepIndexRaw) || 0));
     const step = STEPS[stepIndex];
@@ -636,12 +592,16 @@
     shell({title:o.address, subtitle:`${step.phase === 'field' ? 'Фиксация в базе' : 'Полный осмотр'} · ${step.title}`, back:true, nav:'', content:body, showNav:false});
 
     if (step.summary) {
-      const saveSummary = async () => {
-        o.survey.finalStatus = document.querySelector('input[name="final_status"]:checked')?.value || o.survey.finalStatus || '';
-        o.survey.finalComment = document.getElementById('finalComment').value.trim();
-        o.updatedAt = new Date().toISOString();
-        await dbPut(o);
-      };
+      const summarySaver = GKCore.saver(() => ({
+        status:document.querySelector('input[name="final_status"]:checked')?.value || o.survey.finalStatus || '',
+        comment:document.getElementById('finalComment').value.trim()
+      }), async snapshot => {
+        Object.assign(o,await GKStore.patch(o.id,current=>{
+          current.survey.finalStatus=snapshot.status;current.survey.finalComment=snapshot.comment;
+        }));
+      });
+      viewSave=summarySaver;
+      const saveSummary=()=>summarySaver.save();
       document.getElementById('saveSummaryExit').onclick = async () => { await saveSummary(); toast('Сохранено'); location.hash = `#/object/${o.id}`; };
       document.getElementById('finishSurvey').onclick = async () => {
         await saveSummary();
@@ -651,39 +611,36 @@
         await dbPut(o); toast('Полный осмотр завершён'); location.hash = `#/object/${o.id}`;
       };
       document.querySelectorAll('input[name="final_status"]').forEach(el => el.onchange = saveSummary);
-      let t;
-      document.getElementById('finalComment').oninput = () => { clearTimeout(t); t=setTimeout(saveSummary,450); };
+      document.getElementById('finalComment').oninput = () => summarySaver.queue();
       document.querySelector('[data-go-back]').onclick = async () => { await saveSummary(); location.hash = `#/object/${o.id}`; };
       return;
     }
 
-    const saveFields = async () => {
-      for (const f of step.fields || []) {
-        let val = '';
-        if (f.type === 'tri') val = document.querySelector(`[name="${CSS.escape(f.key)}"]:checked`)?.value || '';
-        else val = document.querySelector(`[name="${CSS.escape(f.key)}"]`)?.value || '';
-        o.survey.answers[f.key] = val;
-      }
-      o.updatedAt = new Date().toISOString(); await dbPut(o);
-    };
-    let autosaveTimer;
-    const queueSave = () => { clearTimeout(autosaveTimer); autosaveTimer = setTimeout(()=>saveFields().catch(console.error), 450); };
+    const fieldSaver=GKCore.saver(() => Object.fromEntries((step.fields||[]).map(f=>[
+      f.key, f.type==='tri' ? document.querySelector(`[name="${CSS.escape(f.key)}"]:checked`)?.value || '' : document.querySelector(`[name="${CSS.escape(f.key)}"]`)?.value || ''
+    ])), async snapshot => { Object.assign(o,await GKStore.patch(o.id,current=>Object.assign(current.survey.answers,snapshot))); });
+    viewSave=fieldSaver;
+    const saveFields=()=>fieldSaver.save();
     document.querySelectorAll('#stageForm input:not([type="file"]), #stageForm textarea, #stageForm select').forEach(el => {
-      el.addEventListener('change', saveFields);
-      el.addEventListener('input', queueSave);
+      el.addEventListener('change',()=>fieldSaver.queue());
+      el.addEventListener('input',()=>fieldSaver.queue());
     });
+    bindPhotoActions(o);
 
     document.querySelectorAll('.photo-capture,.photo-replace').forEach(btn => btn.onclick = () => document.getElementById(`file-${btn.dataset.photoKey}`).click());
     document.querySelectorAll('[data-file-key]').forEach(inp => inp.onchange = async e => {
       const file = e.target.files?.[0]; if (!file) return;
       toast('Обрабатываю фото…');
       try {
+        await saveFields();
+        const sourceRoute=location.hash;
         const data = await compressImage(file, 1280, .76);
-        o.survey.photos[e.target.dataset.fileKey] = data; o.updatedAt = new Date().toISOString(); await dbPut(o); toast('Фото сохранено'); renderSurvey(o.id, stepIndex);
+        Object.assign(o,await GKStore.patch(o.id,current=>{current.survey.photos[e.target.dataset.fileKey]=data;})); toast('Фото сохранено'); if(location.hash===sourceRoute)await renderSurvey(o.id, stepIndex);
       } catch (err) { console.error(err); toast('Не удалось сохранить фото'); }
     });
     document.querySelectorAll('.photo-delete').forEach(btn => btn.onclick = async () => {
-      delete o.survey.photos[btn.dataset.photoKey]; o.updatedAt = new Date().toISOString(); await dbPut(o); renderSurvey(o.id, stepIndex);
+      await saveFields();
+      Object.assign(o,await GKStore.patch(o.id,current=>{delete current.survey.photos[btn.dataset.photoKey];})); renderSurvey(o.id, stepIndex);
     });
 
     document.getElementById('prevStep').onclick = async () => { await saveFields(); location.hash = `#/survey/${o.id}/${Math.max(0,stepIndex-1)}`; };
@@ -697,12 +654,37 @@
     document.querySelector('[data-go-back]').onclick = async () => { await saveFields(); location.hash = `#/object/${o.id}`; };
   }
 
+  function photoActions(key,label) {
+    return `<button type="button" class="btn btn-secondary photo-download" data-key="${esc(key)}" data-label="${esc(label)}">↓ Скачать</button><button type="button" class="btn btn-secondary photo-share" data-key="${esc(key)}" data-label="${esc(label)}">Поделиться</button>`;
+  }
+  function bindPhotoActions(o) {
+    document.querySelectorAll('.photo-download,.photo-share').forEach(button=>button.onclick=async()=>{
+      try {
+        if(button.classList.contains('photo-share')) await GKPhotos.share(o,button.dataset.key,button.dataset.label);
+        else { const file=GKPhotos.file(o,button.dataset.key,button.dataset.label); GKPhotos.download(file,file.name); }
+      } catch(error) { if(error.name!=='AbortError')toast(error.message||'Не удалось выгрузить фото'); }
+    });
+  }
+  function bindPhotoArchive(button,o) {
+    if(!button)return;
+    const caption=button.textContent;
+    button.onclick=async()=>{
+      button.disabled=true;button.textContent='Собираю фотографии…';
+      try {
+        const labels=Object.fromEntries(STEPS.flatMap(s=>s.photos||[]).map(p=>[p[0],p[1]]));
+        await GKPhotos.archive(o,labels);
+        toast('ZIP подготовлен. Проверьте загрузки телефона.');
+      } catch(error) { toast(error.message||'Не удалось скачать фотографии'); }
+      finally { button.disabled=false;button.textContent=caption; }
+    };
+  }
   async function renderGallery(objectId) {
-    const o = await dbGet(objectId); if (!o) return notFound();
-    const photos = o.survey?.photos || {};
-    const allDefs = STEPS.flatMap(s => s.photos || []);
-    const byStep = STEPS.filter(s => (s.photos||[]).some(p => photos[p[0]])).map(s => `<div class="section-title">${esc(s.title)}</div><div class="photo-grid">${(s.photos||[]).filter(p=>photos[p[0]]).map(p=>`<div class="photo-slot done"><img src="${photos[p[0]]}" alt="${esc(p[1])}"><div style="padding:9px;font-size:12px;font-weight:700;background:#fff">${esc(p[1])}</div></div>`).join('')}</div>`).join('');
-    shell({title:'Фотографии',subtitle:o.address,back:true,nav:'',showNav:false,content: byStep || `<div class="card empty-state"><div class="empty-icon">📷</div><h3>Фото пока нет</h3></div>`});
+    const o=await dbGet(objectId);if(!o)return notFound();
+    const photos=o.survey?.photos||{},labels=Object.fromEntries(STEPS.flatMap(s=>s.photos||[]).map(p=>[p[0],p[1]]));
+    const cards=Object.entries(photos).map(([key,data])=>`<div class="photo-slot done"><img src="${esc(data)}" alt="${esc(labels[key]||key)}"><div class="photo-caption">${esc(labels[key]||key)}</div><div class="photo-actions">${photoActions(key,labels[key]||key)}</div></div>`).join('');
+    shell({title:'Фотографии',subtitle:o.address,back:true,showNav:false,content:cards ? `<button class="btn btn-primary btn-block" id="downloadPhotos">↓ Все фото одним ZIP</button><p class="help">Отдельный снимок можно скачать или отправить через меню телефона. Сохраняется качество, имеющееся в приложении.</p><div class="photo-grid">${cards}</div>` : '<p>Фото пока нет.</p>'});
+    bindPhotoActions(o);
+    bindPhotoArchive(document.getElementById('downloadPhotos'),o);
   }
 
   async function renderMap() {
@@ -765,12 +747,70 @@
     toast('Резервная копия создана');
   }
 
+  function syncLabel() {
+    const info=GKSync.info();
+    if(!info.configured)return '☁ Общая база · пока не подключена';
+    if(!info.email)return '☁ Войти в общую базу';
+    return '☁ '+(info.message || 'Общая база');
+  }
+  async function renderCloud() {
+    const info=GKSync.info(),local=(await GKStore.all()).filter(x=>!x._sync?.workspace);
+    shell({title:'Общая база',back:true,showNav:false,content:`
+      <div class="card form-card">
+      ${!info.configured ? '<h3>Подключение готовится</h3><p>Объекты и фото пока сохраняются на этом телефоне. После подключения здесь появится вход в общую базу команды.</p>' : info.email ? `
+        <h3>${esc(info.memberName||info.email)}</h3><p>${esc(info.email)}</p><p id="cloudStatus" role="status">${esc(info.message||'Готово к синхронизации')}</p>
+        <button class="btn btn-primary btn-block" id="syncNow">Синхронизировать сейчас</button>
+        ${local.length ? `<p>На телефоне есть ${local.length} локальных объектов. При переносе уже существующие версии сохранятся.</p><button class="btn btn-secondary btn-block" id="adoptLocal">Перенести ${local.length} объектов в общую базу</button>` : ''}
+        <p class="help">В общую базу отправляются карточки и фото. Без связи изменения остаются на телефоне до следующей синхронизации.</p>
+        <button class="btn btn-secondary" id="logoutCloud">Выйти</button>` : `
+        <form id="loginCloud"><h3>Вход для команды</h3><div class="field"><label>Почта<input name="email" type="email" autocomplete="username" required></label></div><div class="field"><label>Пароль<input name="password" type="password" autocomplete="current-password" required></label></div><button class="btn btn-primary btn-block" type="submit">Войти</button><p class="help">Доступ выдаётся участникам команды.</p><p id="loginError" role="alert"></p></form>`}
+      </div>
+      <div class="card form-card" style="margin-top:16px"><h3>Резервные копии</h3><p>Копия включает доступные на этом телефоне объекты и фотографии.</p><button class="btn btn-secondary btn-block" id="cloudExport">↓ Сохранить резервную копию</button><label class="btn btn-secondary btn-block" style="margin-top:12px">↑ Восстановить из JSON<input id="restoreInput" type="file" accept="application/json,.json" hidden></label><p class="help">Восстановление добавляет данные. Если объект с таким ID отличается, создаётся отдельная копия. Существующие записи не заменяются.</p></div>
+    `});
+    document.getElementById('cloudExport').onclick=exportBackup;
+    const form=document.getElementById('loginCloud');
+    if(form)form.onsubmit=async e=>{e.preventDefault();const button=form.querySelector('button');button.disabled=true;try{await GKSync.login(form.elements.email.value.trim(),form.elements.password.value);form.elements.password.value='';await renderCloud();}catch(error){document.getElementById('loginError').textContent=error.message;}finally{button.disabled=false;}};
+    const syncButton=document.getElementById('syncNow');
+    if(syncButton)syncButton.onclick=async()=>{syncButton.disabled=true;try{await GKSync.sync();await renderCloud();}finally{syncButton.disabled=false;}};
+    const adopt=document.getElementById('adoptLocal');
+    if(adopt)adopt.onclick=async()=>{adopt.disabled=true;try{await GKSync.adopt();await renderCloud();}catch(e){toast(e.message);}finally{adopt.disabled=false;}};
+    const logout=document.getElementById('logoutCloud');
+    if(logout)logout.onclick=async()=>{try{await GKSync.logout();await renderCloud();}catch(e){toast(e.message);}};
+    document.getElementById('restoreInput').onchange=async e=>{
+      const file=e.target.files?.[0];if(!file)return;
+      try{
+        if(file.size>300*1024*1024)throw new Error('Файл больше 300 МБ. Восстановление нужно выполнить на компьютере отдельным переносом.');
+        const objects=GKCore.validateBackup(JSON.parse(await file.text()));
+        if(!confirm(`Добавить ${objects.length} объектов из копии? Совпадающие записи не будут затёрты.`))return;
+        const result=await GKStore.importObjects(objects);
+        toast(`Добавлено: ${result.added}, совпадают: ${result.duplicates}, отдельных версий: ${result.copies}`);
+        await renderCloud();
+      }catch(error){toast(error.message||'Не удалось прочитать копию.');}finally{e.target.value='';}
+    };
+  }
+  window.addEventListener('gk-sync-status',()=>{
+    const button=document.getElementById('syncStatus');if(button)button.textContent=syncLabel();
+    const status=document.getElementById('cloudStatus');if(status)status.textContent=GKSync.info().message;
+  });
+  window.addEventListener('gk-save-error',()=>toast('Не удалось сохранить на телефон. Освободите место и нажмите «Сохранить» ещё раз.'));
+  window.addEventListener('gk-conflict',()=>toast('Найдены разные изменения. Обе версии сохранены для сверки.'));
+  window.addEventListener('gk-remote-change',()=>{
+    const route=location.hash;
+    if(route==='#/objects' || !route)renderObjects();
+    else if(route==='#/map')renderMap();
+    else if(route.startsWith('#/object/'))renderObject(route.split('/')[2]);
+  });
+
   function notFound() { shell({title:'Не найдено',back:true,nav:'',content:`<div class="card empty-state"><div class="empty-icon">?</div><h3>Объект не найден</h3></div>`}); }
 
   async function router() {
+    await closeView();
+    window.GK_EDITING_ID=null;
     const parts = (location.hash || '#/objects').replace(/^#\//,'').split('/');
     const [route,a,b] = parts;
     try {
+      if (route === 'cloud') return renderCloud();
+      if (route === 'edit' || route === 'survey') window.GK_EDITING_ID=a;
       if (route === 'new') return renderNew();
       if (route === 'object') return renderObject(a);
       if (route === 'edit') return renderEdit(a);
@@ -784,9 +824,12 @@
     }
   }
 
+  window.addEventListener('unhandledrejection', e => { console.error(e.reason);toast('Не удалось завершить действие. Данные не отправлены — повторите сохранение.'); });
+  document.addEventListener('visibilitychange',()=>{if(document.hidden && viewSave)viewSave.save().catch(console.error);});
   window.addEventListener('hashchange', router);
   window.addEventListener('load', () => {
     if ('serviceWorker' in navigator && (location.protocol === 'https:' || location.hostname === 'localhost')) navigator.serviceWorker.register('./sw.js').catch(console.warn);
     router();
+    GKSync.sync();
   });
 })();
