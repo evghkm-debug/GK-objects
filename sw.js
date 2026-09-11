@@ -1,5 +1,5 @@
-const CACHE='objects-mvp-v041';
-const ASSETS=['./','./index.html','./styles.css?v=0.4.1','./app.js?v=0.4.1','./cloud-config.js?v=0.4.1','./gk-core.js?v=0.4.1','./gk-store.js?v=0.4.1','./gk-sync.js?v=0.4.1','./gk-photos.js?v=0.4.1','./vendor/jszip.min.js?v=0.4.1','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
+const CACHE='objects-mvp-v042';
+const ASSETS=['./','./index.html','./styles.css?v=0.4.2','./app.js?v=0.4.2','./cloud-config.js?v=0.4.2','./gk-core.js?v=0.4.2','./gk-store.js?v=0.4.2','./gk-sync.js?v=0.4.2','./gk-photos.js?v=0.4.2','./vendor/jszip.min.js?v=0.4.2','./manifest.webmanifest','./icons/icon-192.png','./icons/icon-512.png'];
 self.addEventListener('install',e=>{e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)).then(()=>self.skipWaiting()));});
 self.addEventListener('activate',e=>e.waitUntil(Promise.all([
   caches.keys().then(keys=>Promise.all(keys.filter(k=>k.startsWith('objects-mvp-')&&k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()

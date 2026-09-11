@@ -93,3 +93,19 @@ with check(bucket_id='gk-photos' and name ~ '^[0-9a-f-]{36}/photos/[0-9a-f]{64}\
   and exists(select 1 from public.gk_members m where m.user_id=auth.uid() and m.workspace_id::text=(storage.foldername(name))[1]));
 -- Photos are immutable. No browser UPDATE/DELETE policies; previous revisions remain recoverable.
 commit;
+
+-- Deployed as follow-up migration gk_private_functions; also required on fresh installs.
+begin;
+create schema if not exists gk_private;
+revoke all on schema gk_private from public,anon;
+grant usage on schema gk_private to authenticated;
+alter function public.gk_is_member(uuid) set schema gk_private;
+alter function public.gk_save_object(uuid,text,jsonb,bigint,uuid) set schema gk_private;
+revoke all on all functions in schema gk_private from public,anon;
+grant execute on function gk_private.gk_is_member(uuid),gk_private.gk_save_object(uuid,text,jsonb,bigint,uuid) to authenticated;
+create function public.gk_is_member(w uuid) returns boolean language sql stable security invoker set search_path='' as $$ select gk_private.gk_is_member(w); $$;
+create function public.gk_save_object(p_workspace uuid,p_id text,p_payload jsonb,p_base_revision bigint,p_operation uuid)
+returns jsonb language sql security invoker set search_path='' as $$ select gk_private.gk_save_object(p_workspace,p_id,p_payload,p_base_revision,p_operation); $$;
+revoke all on function public.gk_is_member(uuid),public.gk_save_object(uuid,text,jsonb,bigint,uuid) from public,anon,authenticated;
+grant execute on function public.gk_is_member(uuid),public.gk_save_object(uuid,text,jsonb,bigint,uuid) to authenticated;
+commit;

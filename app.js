@@ -1,7 +1,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.4.1';
+  const APP_VERSION = '0.4.2';
   const DB_NAME = 'objectsSurveyDB';
   const DB_VERSION = 1;
   const STORE = 'objects';
