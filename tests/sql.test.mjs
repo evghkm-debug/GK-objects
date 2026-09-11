@@ -17,6 +17,7 @@ await db.exec(`insert into auth.users values('${a}'),('${b}');insert into public
 async function role(name,user=''){await db.exec('reset role');await db.query("select set_config('request.jwt.claim.sub',$1,false)",[user]);await db.exec('set role '+name);}
 async function denied(fn){await assert.rejects(fn);}
 await role('anon');await denied(()=>db.query('select * from public.gk_objects'));
+await denied(()=>db.query("select public.gk_is_member('11111111-1111-4111-8111-111111111111')"));
 await role('authenticated',a);
 await denied(()=>db.query(`insert into public.gk_members values('${other}','${a}','Intruder')`));
 await denied(()=>db.query(`update public.gk_objects set revision=999`));
